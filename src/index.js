@@ -1,5 +1,25 @@
 const PRIMITIVE = "TEXT_ELEMENT";
 
+let nextUnitOfWork = null;
+function workLoop(deadline) {
+  let shouldYield = false;
+  while (nextUnitOfWork && !shouldYield) {
+    nextUnitOfWork = performAndPlanUnitOfWork(nextUnitOfWork);
+    shouldYield = deadline.timeRemaining() < 1;
+  }
+  window.requestIdleCallback(workLoop)
+}
+
+// https://developer.mozilla.org/fr/docs/Web/API/Window/requestIdleCallback
+//
+// React now uses its own scheduler package but used to use this to not freeze the
+// main thread
+window.requestIdleCallback(workLoop)
+
+function performAndPlanUnitOfWork(nextUnitOfWork) {
+  // TODO
+}
+
 function render(element, container) {
   // We want to detect primitive types to only make a Text node
   const dom =
