@@ -1,3 +1,26 @@
+const PRIMITIVE = "TEXT_ELEMENT";
+
+function render(element, container) {
+  // We want to detect primitive types to only make a Text node
+  const dom =
+        element.type === PRIMITIVE
+        ? document.createTextNode("")
+        : document.createElement(element.type);
+
+  // Everything but children should be set as prop of the child
+  const isProperty = key => key !== "children"
+  Object.keys(element.props)
+        .filter(isProperty)
+        .forEach(name => {
+          dom[name] = element.props[name]
+        })
+
+  // Recursively render all children
+  element.props.children.forEach(child => render(child, dom))
+
+  container.appendChild(dom);
+}
+
 function createElement(type, props, ...children) {
   return {
     type,
@@ -16,7 +39,7 @@ function createElement(type, props, ...children) {
 
 function createTextElement(text) {
   return {
-    type: "TEXT_ELEMENT",
+    type: PRIMITIVE,
     props: {
       nodeValue: text,
       // React doesn’t store empty arrays when there is no child,
@@ -29,6 +52,7 @@ function createTextElement(text) {
 
 const Notact = {
   createElement,
+  render,
 }
 
 ///////////////////////////////
@@ -52,5 +76,5 @@ const element = (
   </div>
 )
 
-const container = document.getElementById("app")
-ReactDOM.render(element, container)
+const container = document.getElementById("App")
+Notact.render(element, container)

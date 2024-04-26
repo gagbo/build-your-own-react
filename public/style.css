@@ -4,3 +4,7 @@ body {
     background-color: var(--lunaria-bg);
     color: var(--lunaria-fg);
 }
+
+h1 {
+    color: var(--lunaria-emph-fg);
+}
