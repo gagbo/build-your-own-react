@@ -13,7 +13,7 @@
     </head>
 
 
-    <body class="lunaria-dark">
+    <body id="body" class="lunaria-light">
         <!--[if lt IE 8]>
             <p class="browserupgrade">
             You are using an <strong>outdated</strong> browser. Please
@@ -24,6 +24,7 @@
 
         <main>
             <h1>A basic Notact app</h1>
+            <button id="theme-switcher" onClick="themeToggle()">Change Theme</button>
             <p> The app should render just below this paragraph</p>
 
             <App id="App"/>

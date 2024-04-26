@@ -8,3 +8,9 @@ body {
 h1 {
     color: var(--lunaria-emph-fg);
 }
+
+button {
+    background-color: var(--lunaria-bg-green-semiopaque);
+    border-color: var(--lunaria-bg-green);
+    color: var(--lunaria-emph-fg);
+}

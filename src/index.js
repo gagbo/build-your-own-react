@@ -78,3 +78,25 @@ const element = (
 
 const container = document.getElementById("App")
 Notact.render(element, container)
+
+// Theme switcher
+
+const LIGHT_THEME = "lunaria-light";
+const DARK_THEME = "lunaria-dark";
+function themeToggle()
+{
+  var bod = document.getElementById("body");
+  if(bod.className === LIGHT_THEME){
+    bod.className = DARK_THEME;
+  } else {
+    bod.className = LIGHT_THEME;
+  }
+
+  var but = document.getElementById("theme-switcher");
+  if(bod.className === LIGHT_THEME){
+    but.innerHTML = "Go to Dark";
+  } else {
+    but.innerHTML = "Go to Light";
+  }
+}
+window.themeToggle = themeToggle;
