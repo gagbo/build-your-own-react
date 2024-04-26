@@ -14,14 +14,19 @@ const isGone = (_prev, next) => key => !(key in next);
 //   *** dom represent the data in the tree.
 //   *** it’s the actual dom node we currently want to render
 //   dom?: HTMLElement,
+//   *** type is the function for function components, because of JS magic
+//   type: Type
+//   *** For host components
+//   props: {
+//     children: HTMLElement[],
+//   }
+//   *** For function components
+//   props: Object
 //   *** All other props are "pointers" to traverse the tree
 //   *** We don’t need to maintain a "visited" list, because we know a node has
 //   *** - at most 1 parent
 //   *** - at most 1 next sibling
 //   *** - and we only traverse DFS
-//   props: {
-//     children: HTMLElement[],
-//   }
 //   firstChild?: Fiber,
 //   parent?: Fiber,
 //   nextSibling?: Fiber,
@@ -53,7 +58,15 @@ function commitWork(fiber) {
     return;
   }
 
-  const domParent = fiber.parent.dom;
+  // If we have function components, we need
+  // to walk the tree up until we find where to
+  // commit the node.
+  let domParentFiber = fiber.parent
+  while (!domParentFiber.dom) {
+    domParentFiber = domParentFiber.parent
+  }
+  const domParent = domParentFiber.dom
+
   if (fiber.effectTag === PLACEMENT && fiber.dom !== null) {
     domParent.appendChild(fiber.dom);
   }
@@ -65,12 +78,24 @@ function commitWork(fiber) {
     )
   }
   else if (fiber.effectTag === DELETION) {
-    domParent.removeChild(fiber.dom)
+    commitDeletion(fiber, domParent);
   }
   commitWork(fiber.firstChild);
   commitWork(fiber.nextSibling);
 
 }
+
+function commitDeletion(fiber, domParent) {
+  // If we have function components, we need
+  // to walk the tree down until we find where to
+  // delete the node.
+  if (fiber.dom) {
+    domParent.removeChild(fiber.dom)
+  } else {
+    commitDeletion(fiber.firstChild, domParent)
+  }
+}
+
 
 function updateDom(dom, oldProps, newProps) {
   // Remove old or changed event listeners
@@ -104,7 +129,6 @@ function updateDom(dom, oldProps, newProps) {
           const eventType = name.toLowerCase().substring(2);
           dom.addEventListener(eventType, newProps[name]);
         });
-
 }
 
 function workLoop(deadline) {
@@ -128,7 +152,7 @@ function workLoop(deadline) {
 // main thread
 window.requestIdleCallback(workLoop)
 
-function performAndPlanUnitOfWork(fiber) {
+function updateHostComponent(fiber) {
   // Add the `nextUnitOfWork` to the DOM
   // console.log("fiber.dom", fiber.dom, "!fiber.dom", !fiber.dom);
   if (!fiber.dom) {
@@ -138,6 +162,21 @@ function performAndPlanUnitOfWork(fiber) {
   // Create fibers for the `nextUnitOfWork` children
   const elements = fiber.props.children;
   reconcileChildren(fiber, elements);
+}
+
+function updateFunctionComponent(fiber) {
+  const children = [fiber.type(fiber.props)];
+  reconcileChildren(fiber, children);
+}
+
+function performAndPlanUnitOfWork(fiber) {
+   const isFunctionComponent =
+         fiber.type instanceof Function;
+  if (isFunctionComponent) {
+    updateFunctionComponent(fiber);
+  } else {
+    updateHostComponent(fiber);
+  }
 
   // Select the next unit of work and return it
   // We are going to traverse the DOM Depth First
@@ -305,9 +344,10 @@ const Notact = {
 
 /* Babel JSX annotation version */
 /** @jsx Notact.createElement */
-const element = (
+function App(props) {
+  return (
   <div id="foo">
-    <h2>Things we can do</h2>
+    <h2>Things we can do with {props.name}</h2>
     <p />
     <ul>
       <li>switch Dark/Light theme</li>
@@ -323,7 +363,10 @@ const element = (
     </ul>
     <b />
   </div>
-)
+);
+}
+
+const element = <App name="Notact" />
 
 const container = document.getElementById("App")
 Notact.render(element, container)
