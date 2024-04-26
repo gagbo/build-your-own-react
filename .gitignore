@@ -1,0 +1,14 @@
+.DS_Store
+.idea
+.vscode
+.dir-locals.el
+*.log
+tmp/
+
+build/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.eslintcache

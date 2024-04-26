@@ -1,0 +1,6 @@
+@import url(https://lunaria.design/css/lunaria.css);
+
+body {
+    background-color: var(--lunaria-bg);
+    color: var(--lunaria-fg);
+}
