@@ -1,6 +1,21 @@
 const PRIMITIVE = "TEXT_ELEMENT";
 
+// Fiber {
+//   *** dom represent the data in the tree.
+//   *** it’s the actual dom node we currently want to render
+//   dom?: HTMLElement,
+//   *** All other props are "pointers" to traverse the tree
+//   *** We don’t need to maintain a "visited" list, because we know a node has
+//   *** - at most 1 parent
+//   *** - at most 1 next sibling
+//   *** - and we only traverse DFS
+//   children: HTMLElement[],
+//   firstChild?: Fiber,
+//   parent?: Fiber,
+//   nextSibling?: Fiber,
+// }
 let nextUnitOfWork = null;
+
 function workLoop(deadline) {
   let shouldYield = false;
   while (nextUnitOfWork && !shouldYield) {
@@ -16,29 +31,88 @@ function workLoop(deadline) {
 // main thread
 window.requestIdleCallback(workLoop)
 
-function performAndPlanUnitOfWork(nextUnitOfWork) {
-  // TODO
+function performAndPlanUnitOfWork(fiber) {
+  // Add the `nextUnitOfWork` to the DOM
+  if (!fiber.dom) {
+    fiber.dom = createDom(fiber);
+  }
+
+  if (fiber.parent) {
+    fiber.parent.dom.appendChild(fiber.dom);
+  }
+
+  // Create fibers for the `nextUnitOfWork` children
+  const elements = fiber.props.children;
+  let index = 0;
+  let prevSibling = null;
+
+  while (index < elements.length) {
+    const element = elements[index];
+
+    const childFiber = {
+      type: element.type,
+      props: element.props,
+      parent: fiber,
+      dom: null,
+    }
+
+    if (index === 0) {
+      fiber.firstChild = childFiber;
+    } else {
+      prevSibling.nextSibling = childFiber;
+    }
+
+    prevSibling = childFiber;
+    index++;
+  }
+
+  // Select the next unit of work and return it
+  // We are going to traverse the DOM Depth First
+  if (fiber.firstChild) {
+    return fiber.firstChild;
+  }
+
+  // Otherwise, search for the next sibling, or the next sibling of the parent.
+  let nextFiber = fiber;
+  while (nextFiber) {
+    if (nextFiber.nextSibling) {
+      return nextFiber.nextSibling;
+    }
+
+    nextFiber = nextFiber.parent;
+  }
+
+  return nextFiber;
+}
+
+function createDom(fiber) {
+  // We want to detect primitive types to only make a Text node
+  const dom =
+        fiber.type === PRIMITIVE
+        ? document.createTextNode("")
+        : document.createElement(fiber.type);
+
+  // Everything but children should be set as prop of the fiber element
+  const isProperty = key => key !== "children"
+  Object.keys(fiber.props)
+        .filter(isProperty)
+        .forEach(name => {
+          dom[name] = fiber.props[name]
+        })
+
+  return dom;
 }
 
 function render(element, container) {
-  // We want to detect primitive types to only make a Text node
-  const dom =
-        element.type === PRIMITIVE
-        ? document.createTextNode("")
-        : document.createElement(element.type);
+  // Create the root unit of work
+  nextUnitOfWork = {
+    dom: container,
+    props: {
+      children: [element],
+    },
+  };
 
-  // Everything but children should be set as prop of the child
-  const isProperty = key => key !== "children"
-  Object.keys(element.props)
-        .filter(isProperty)
-        .forEach(name => {
-          dom[name] = element.props[name]
-        })
 
-  // Recursively render all children
-  element.props.children.forEach(child => render(child, dom))
-
-  container.appendChild(dom);
 }
 
 function createElement(type, props, ...children) {
@@ -91,7 +165,20 @@ const Notact = {
 /** @jsx Notact.createElement */
 const element = (
   <div id="foo">
-    <a>bar</a>
+    <h2>Things we can do</h2>
+    <p />
+    <ul>
+      <li>switch Dark/Light theme</li>
+      <li>render elements</li>
+    </ul>
+    <h2>Things we (re)learnt</h2>
+    <ul>
+      <li>Importing external sources to CSS</li>
+      <li>Using CSS variables</li>
+      <li>Attaching functions to html scope</li>
+      <li><pre>requestIdleCallback</pre> to leave main thread alone</li>
+      <li>Babel is still everywhere (annotations to transform JSX)</li>
+    </ul>
     <b />
   </div>
 )
