@@ -9,12 +9,37 @@ const PRIMITIVE = "TEXT_ELEMENT";
 //   *** - at most 1 parent
 //   *** - at most 1 next sibling
 //   *** - and we only traverse DFS
-//   children: HTMLElement[],
+//   props: {
+//     children: HTMLElement[],
+//   }
 //   firstChild?: Fiber,
 //   parent?: Fiber,
 //   nextSibling?: Fiber,
 // }
 let nextUnitOfWork = null;
+// The shadow DOM?
+let wipRoot = null;
+
+// Swap the Shadow DOM and the real DOM
+function commitRoot() {
+  commitWork(wipRoot.firstChild);
+  wipRoot = null;
+}
+
+function commitWork(fiber) {
+  // console.log("Fiber", fiber)
+  if (!fiber) {
+    return;
+  }
+
+  const domParent = fiber.parent.dom;
+  if (domParent) {
+    domParent.appendChild(fiber.dom);
+  }
+  commitWork(fiber.firstChild);
+  commitWork(fiber.nextSibling);
+
+}
 
 function workLoop(deadline) {
   let shouldYield = false;
@@ -22,6 +47,12 @@ function workLoop(deadline) {
     nextUnitOfWork = performAndPlanUnitOfWork(nextUnitOfWork);
     shouldYield = deadline.timeRemaining() < 1;
   }
+
+  if (!nextUnitOfWork && wipRoot) {
+    commitRoot()
+  }
+
+
   window.requestIdleCallback(workLoop)
 }
 
@@ -33,12 +64,9 @@ window.requestIdleCallback(workLoop)
 
 function performAndPlanUnitOfWork(fiber) {
   // Add the `nextUnitOfWork` to the DOM
+  // console.log("fiber.dom", fiber.dom, "!fiber.dom", !fiber.dom);
   if (!fiber.dom) {
     fiber.dom = createDom(fiber);
-  }
-
-  if (fiber.parent) {
-    fiber.parent.dom.appendChild(fiber.dom);
   }
 
   // Create fibers for the `nextUnitOfWork` children
@@ -100,18 +128,20 @@ function createDom(fiber) {
           dom[name] = fiber.props[name]
         })
 
+  // console.log("Created DOM", dom);
   return dom;
 }
 
 function render(element, container) {
   // Create the root unit of work
-  nextUnitOfWork = {
+  wipRoot = {
     dom: container,
     props: {
       children: [element],
     },
   };
 
+  nextUnitOfWork = wipRoot;
 
 }
 
