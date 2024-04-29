@@ -27,13 +27,15 @@ const isGone = (_prev, next) => key => !(key in next);
 //   *** - at most 1 parent
 //   *** - at most 1 next sibling
 //   *** - and we only traverse DFS
-//   firstChild?: Fiber,
+//   child?: Fiber,
 //   parent?: Fiber,
 //   nextSibling?: Fiber,
 //   // What is the fiber on the other tree?
 //   alternate?: Fiber,
 //   // Markers for the reactivity
 //   effectTag?: string,
+//   // Hooks that should trigger a rerender of the fiber?
+//   hooks: []
 // }
 let nextUnitOfWork = null;
 // The shadow DOM
@@ -44,11 +46,15 @@ let currentRoot = null;
 // to store the deletions to do in an extra array
 // that is used in the DOM committing function.
 let deletions = null;
+let wipFiber = null;
+let hookIndex = null;
 
 // Swap the Shadow DOM and the real DOM
 function commitRoot() {
   deletions.forEach(commitWork);
-  commitWork(wipRoot.firstChild);
+  commitWork(wipRoot.child);
+  // Swap the DOMs
+  currentRoot = wipRoot;
   wipRoot = null;
 }
 
@@ -80,7 +86,7 @@ function commitWork(fiber) {
   else if (fiber.effectTag === DELETION) {
     commitDeletion(fiber, domParent);
   }
-  commitWork(fiber.firstChild);
+  commitWork(fiber.child);
   commitWork(fiber.nextSibling);
 
 }
@@ -92,12 +98,13 @@ function commitDeletion(fiber, domParent) {
   if (fiber.dom) {
     domParent.removeChild(fiber.dom)
   } else {
-    commitDeletion(fiber.firstChild, domParent)
+    commitDeletion(fiber.child, domParent)
   }
 }
 
 
 function updateDom(dom, oldProps, newProps) {
+  // console.log("Updating the DOM:", dom, oldProps, newProps);
   // Remove old or changed event listeners
   // Needs to be handled differently than properties because of
   // removeEventListener
@@ -105,6 +112,7 @@ function updateDom(dom, oldProps, newProps) {
         .filter(isEvent)
         .filter(key => !(key in newProps) || isNew(oldProps, newProps)(key))
         .forEach(name => {
+          // console.log("removing old listener: ", name, " on ", dom);
           const eventType = name.toLowerCase().substring(2);
           dom.removeEventListener(eventType, oldProps[name]);
         });
@@ -126,6 +134,7 @@ function updateDom(dom, oldProps, newProps) {
         .filter(isEvent)
         .filter(isNew(oldProps, newProps))
         .forEach(name => {
+          // console.log("adding new listener: ", name, " on ", dom);
           const eventType = name.toLowerCase().substring(2);
           dom.addEventListener(eventType, newProps[name]);
         });
@@ -133,6 +142,7 @@ function updateDom(dom, oldProps, newProps) {
 
 function workLoop(deadline) {
   let shouldYield = false;
+  console.log("Start workloop: ", nextUnitOfWork);
   while (nextUnitOfWork && !shouldYield) {
     nextUnitOfWork = performAndPlanUnitOfWork(nextUnitOfWork);
     shouldYield = deadline.timeRemaining() < 1;
@@ -160,13 +170,49 @@ function updateHostComponent(fiber) {
   }
 
   // Create fibers for the `nextUnitOfWork` children
-  const elements = fiber.props.children;
-  reconcileChildren(fiber, elements);
+  reconcileChildren(fiber, fiber.props.children);
 }
 
 function updateFunctionComponent(fiber) {
+  wipFiber = fiber;
+  hookIndex = 0;
+  wipFiber.hooks = [];
+
   const children = [fiber.type(fiber.props)];
+  console.log("children of fiber", fiber, children);
   reconcileChildren(fiber, children);
+}
+
+function useState(initial) {
+  const oldHook = wipFiber.alternate && wipFiber.alternate.hooks && wipFiber.alternate.hooks[hookIndex];
+
+  const hook = {
+    state: oldHook ? oldHook.state : initial,
+    queue: [],
+  }
+
+  const actions = oldHook ? oldHook.queue : [];
+  // console.log("actions: ", actions);
+  actions.forEach(action => {
+    hook.state = action(hook.state);
+  });
+
+  const setState = action => {
+    // console.log("Called setState");
+    hook.queue.push(action);
+    wipRoot = {
+      dom: currentRoot.dom,
+      props: currentRoot.props,
+      alternate: currentRoot,
+    };
+    // This is where the rerender gets queued
+    nextUnitOfWork = wipRoot;
+    deletions = [];
+  };
+
+  wipFiber.hooks.push(hook);
+  hookIndex++;
+  return [hook.state, setState];
 }
 
 function performAndPlanUnitOfWork(fiber) {
@@ -180,8 +226,8 @@ function performAndPlanUnitOfWork(fiber) {
 
   // Select the next unit of work and return it
   // We are going to traverse the DOM Depth First
-  if (fiber.firstChild) {
-    return fiber.firstChild;
+  if (fiber.child) {
+    return fiber.child;
   }
 
   // Otherwise, search for the next sibling, or the next sibling of the parent.
@@ -190,29 +236,20 @@ function performAndPlanUnitOfWork(fiber) {
     if (nextFiber.nextSibling) {
       return nextFiber.nextSibling;
     }
-
     nextFiber = nextFiber.parent;
   }
-
-  return nextFiber;
 }
 
 function reconcileChildren(wipFiber, elements) {
   let index = 0;
-  let oldFiber = wipFiber.alternate && wipFiber.alternate.firstChild;
+  let oldFiber = wipFiber.alternate && wipFiber.alternate.child;
   let prevSibling = null;
 
-  while (index < elements.length || oldFiber !== null) {
+  // Only != and not !== because oldFiber can be null or undefined...
+  while (index < elements.length || oldFiber != null) {
     // What needs to be rendered next
     const element = elements[index];
     let newFiber = null;
-
-    // const newFiber = {
-    //   type: element.type,
-    //   props: element.props,
-    //   parent: wipFiber,
-    //   dom: null,
-    // }
 
     // Compare oldFiber to element
     const sameType =
@@ -242,6 +279,8 @@ function reconcileChildren(wipFiber, elements) {
     } else if (oldFiber && !sameType) {
       oldFiber.effectTag = DELETION;
       deletions.push(oldFiber);
+    } else {
+      console.error("weird case - oldFiber: ", oldFiber, "element: ", element, "index: ", index, "elements: ", elements);
     }
 
     // Advance the oldFiber sibling at the same rate as
@@ -251,8 +290,8 @@ function reconcileChildren(wipFiber, elements) {
     }
 
     if (index === 0) {
-      wipFiber.firstChild = newFiber;
-    } else {
+      wipFiber.child = newFiber;
+    } else if (element) {
       prevSibling.nextSibling = newFiber;
     }
 
@@ -269,13 +308,8 @@ function createDom(fiber) {
         ? document.createTextNode("")
         : document.createElement(fiber.type);
 
-  // Everything but children should be set as prop of the fiber element
-  const isProperty = key => key !== "children"
-  Object.keys(fiber.props)
-        .filter(isProperty)
-        .forEach(name => {
-          dom[name] = fiber.props[name]
-        })
+  // Update the DOM according to the current props
+  updateDom(dom, {}, fiber.props);
 
   // console.log("Created DOM", dom);
   return dom;
@@ -293,7 +327,6 @@ function render(element, container) {
 
   deletions = [];
   nextUnitOfWork = wipRoot;
-
 }
 
 function createElement(type, props, ...children) {
@@ -328,6 +361,7 @@ function createTextElement(text) {
 const Notact = {
   createElement,
   render,
+  useState,
 }
 
 ///////////////////////////////
@@ -345,14 +379,20 @@ const Notact = {
 /* Babel JSX annotation version */
 /** @jsx Notact.createElement */
 function App(props) {
+  const [state, setState] = Notact.useState(1);
+  console.log("Rerender: ", state);
+
   return (
   <div id="foo">
     <h2>Things we can do with {props.name}</h2>
-    <p />
     <ul>
       <li>switch Dark/Light theme</li>
       <li>render elements</li>
     </ul>
+    <button onClick={() => setState(c => {
+      /* console.log("Old state", c); */
+      return c + 1;
+    } )}> Count: {state}</button>
     <h2>Things we (re)learnt</h2>
     <ul>
       <li>Importing external sources to CSS</li>
@@ -368,7 +408,7 @@ function App(props) {
 
 const element = <App name="Notact" />
 
-const container = document.getElementById("App")
+const container = document.getElementById("root")
 Notact.render(element, container)
 
 // Theme switcher
